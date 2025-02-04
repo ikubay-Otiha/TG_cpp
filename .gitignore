@@ -1,0 +1,59 @@
+# 一般的なビルドファイル
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.exe
+*.out
+*.app
+
+# CMakeビルドディレクトリ
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+build/
+
+# Visual Studio関連
+*.vcxproj*
+*.sln
+*.filters
+*.user
+*.ncb
+*.sdf
+*.VC.db
+ipch/
+
+# Xcode関連
+*.xcworkspace
+*.xcuserdata
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# IDE設定ファイル（CLion, VSCode など）
+.idea/
+.vscode/
+*.iml
+
+# ログファイルや一時ファイル
+*.log
+*.tmp
+*.swp
+*.swo
+*.DS_Store
+
+# バージョン管理対象外の実行ファイルやライブラリ
+bin/
+obj/
+lib/
+
+# キャッシュや依存関係
+*.cache/
+*.deps/
+test.db
+TG_cpp
