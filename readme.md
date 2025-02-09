@@ -8,25 +8,41 @@
 
 *   OS: macOS, Linux, Raspberry Pi OS
 *   コンパイラ: GCC, Clang
-*   CMake: 3.10 以上
+*   CMake: 3.31 以上
 *   vcpkg
 
 ## ビルド&ラン方法
 
-1.  vcpkg をインストールします。
+1.  vcpkg をインストール
     ```bash
     git clone https://github.com/microsoft/vcpkg.git
     cd vcpkg
     ./bootstrap-vcpkg.sh
     ```
-2.  必要なライブラリをインストールします。
+2.  必要なライブラリをインストール
     ```bash
     ./vcpkg install crow
     ./vcpkg install cpr
     ./vcpkg install nlohmann-json
     ```
-3.  CMakeLists.txt を修正します。
-4.  以下のコマンドでビルド&実行します。
+3.  環境設定を.envへ記載
+    ```
+    # vcpkg path
+    VCPKG_PATH=</path/to/your/vcpkg>
+    # include path
+    INCLUDE_PATH=</path/to/your/vcpkg/installed/your-architectuew/include>
+    ```
+4.  allowed_ip.jsonを作成し許可するパスを記載(Temporary)
+    ```json
+    {
+        "allowed_ips": [
+            "192.168.1.2",
+            "192.168.1.7"
+            ],
+        "port": 3030
+    }
+    ```
+5.  以下のコマンドでビルド&実行
     ```bash
-    sh build_and_run.sh
+    ./build_and_run.sh
     ```

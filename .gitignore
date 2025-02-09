@@ -57,3 +57,6 @@ lib/
 *.deps/
 test.db
 TG_cpp
+
+# 環境変数
+*.env
