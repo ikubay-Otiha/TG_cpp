@@ -30,7 +30,7 @@
     # vcpkg path
     VCPKG_PATH=</path/to/your/vcpkg>
     # include path
-    INCLUDE_PATH=</path/to/your/vcpkg/installed/your-architectuew/include>
+    INCLUDE_PATH=</path/to/your/vcpkg/installed/your-architecture/include>
     ```
 4.  allowed_ip.jsonを作成し許可するパスを記載(Temporary)
     ```json
