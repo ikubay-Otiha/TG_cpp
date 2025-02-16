@@ -60,3 +60,4 @@ TG_cpp
 
 # 環境変数や設定ファイル
 *.env
+config/

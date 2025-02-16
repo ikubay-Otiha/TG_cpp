@@ -6,9 +6,11 @@
     AllowShortIfStatementsOnASingleLine: false,
     IndentCaseLabels: false,
     IncludeBlocks: Preserve,
-    ColumnLimit: 120,
+    ColumnLimit: 0,
     AccessModifierOffset: -4,
     NamespaceIndentation: All,
     FixNamespaceComments: false,
-    SpaceBeforeTrailingComments: 2
+    SpaceBeforeTrailingComments: 2,
+    BreakBeforeBraces: Attach,
+    SpacesInContainerLiterals: false
 }

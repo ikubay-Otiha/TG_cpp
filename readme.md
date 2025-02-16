@@ -32,7 +32,11 @@
     # include path
     INCLUDE_PATH=</path/to/your/vcpkg/installed/your-architecture/include>
     ```
-4.  allowed_ip.jsonを作成し許可するパスを記載(Temporary)
+4.  プロジェクト配下にconfigディレクトリを作成し、allowed_ip.jsonを作成し許可するIPを記載(Temporary)
+    ```bash
+    mkdir -p config  && touch config/allowed_ip.json
+    ```
+    allowed_ip.json
     ```json
     {
         "allowed_ips": [

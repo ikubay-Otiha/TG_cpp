@@ -1,58 +1,166 @@
 #include "crow.h"
 #include "routes/route.hpp"
-#include "utils/ip_checker.hpp"
+#include "utils/utils.hpp"
+#include "whisper/whisper_handler.hpp"
+#include <boost/stacktrace.hpp>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <stdexcept>
 
-using json = nlohmann::json;
+// multipart/form-dataの音声データを解析する関数
+std::vector<uint8_t> extra_audio_data(const std::string &body, const std::string &boundary) {
+    std::vector<uint8_t> audio_data;
+
+    // 境界文字列分割
+    size_t file_start = body.find("\r\n\r\n");
+    if (file_start == std::string::npos) {
+        throw std::runtime_error("Invaild multipart format");
+    }
+    file_start += 4; // `\r\n\r\n` の後からデータ開始
+
+    size_t file_end = body.find("--" + boundary, file_start);
+    if (file_end == std::string::npos) {
+        throw std::runtime_error("Invalid multipart ending");
+    }
+
+    // ファイルデータをバイナリとして取得
+    audio_data.assign(body.begin() + file_start, body.begin() + file_end - 2); // `\r\n` を除外
+
+    return audio_data;
+}
+
+// multipart/form-dataのパラメータを解析する関数
+std::string extra_value(const std::string &body, const std::string &boundary, const std::string &field_name) {
+    std::string value;
+
+    // フィールドの開始位置を検索
+    std::string field_start_str = "Content-Disposition: form-data; name=\"" + field_name + "\"";
+    size_t field_start = body.find(field_start_str);
+    if (field_start == std::string::npos) {
+        return ""; // フィールドが見つからない場合、空文字を返す
+    }
+
+    // データの開始位置を検索
+    size_t data_start = body.find("\r\n\r\n", field_start) + 4;
+    if (data_start == std::string::npos) {
+        throw std::runtime_error("Invaild multiple format");
+    }
+
+    // 境界文字列を検索
+    size_t field_end = body.find("--" + boundary, data_start);
+    if (field_end == std::string::npos) {
+        throw std::runtime_error("Invalid multipart ending");
+    }
+
+    // 値を検出
+    value = body.substr(data_start, field_end - data_start - 2);
+
+    return value;
+}
 
 int main() {
-    std::cout << "Current path: " << std::filesystem::current_path() << std::endl;
-
     crow::SimpleApp app;
 
     // load allowed IPlist
     std::vector<std::string> allowed_ips = load_allowed_ips();
 
+    // load .env file
+    std::unordered_map<std::string, std::string> env = load_env();
+    std::string config_path = env["CONFIG_PATH"];
+    int port_number;
+
     // load config file
-    std::ifstream config_file("config/allowed_ip.json");
-    json config;
-
     try {
-        config_file >> config;
-
-        // check if the port exists
-        if (!config.contains("port")) {
-            std::cerr << "No port specified in config" << std::endl;
-            return -1;
-        }
-    } catch (const nlohmann::json::parse_error &e) {
-        std::cerr << "JSON parse error: " << e.what() << std::endl;
+        nlohmann::json config = load_config_file(config_path);
+        port_number = config["port"].get<int>(); // int型で取得
+    } catch (const std::runtime_error &e) {
+        std::cerr << "Error: " << e.what() << std::endl;
         return -1;
     }
 
+    // add Whisper API endpoint
+    CROW_ROUTE(app, "/transcription")
+        .methods("POST"_method)([&env, &allowed_ips](const crow::request &req) {
+            // check if the IP is allowed
+            if (!is_ip_allowed(req.remote_ip_address, allowed_ips)) {
+                return crow::response(403, "Forbidden");
+            }
+
+            try {
+                // headerのContent-typeを確認
+                std::string content_type = req.get_header_value("Content-Type");
+                if (content_type.find("multipart/form-data") == std::string::npos) {
+                    return crow::response(400, "Invalid content type");
+                }
+
+                //  境界文字列を取得
+                const std::string boundary_prefix = "boundary=";
+                size_t boundary_pos = content_type.find(boundary_prefix);
+                if (boundary_pos == std::string::npos) {
+                    return crow::response(400, "Invalid multipart boundary");
+                }
+                // boundary=の後ろに続く文字列を取得する
+                std::string boundary = content_type.substr(boundary_pos + boundary_prefix.length());
+
+                // multipart/form-dataから各種パラメータを抽出
+                std::string meeting_title = extra_value(req.body, boundary, "title");
+                std::cout << "meeting_title: " + meeting_title << std::endl;
+
+                std::string meeting_datetime = extra_value(req.body, boundary, "datetime");
+                std::cout << "meeting_datetime: " + meeting_datetime << std::endl;
+
+                if (meeting_title.empty()) {
+                    return crow::response(400, "Missing meeting title");
+                }
+
+                if (meeting_datetime.empty()) {
+                    return crow::response(400, "Missing meeting datetime");
+                }
+
+                // multipart/form-dataから音声データを抽出
+                std::vector<uint8_t> audio_data = extra_audio_data(req.body, boundary);
+
+                // call WhisperAPI in async process
+                std::future<std::string> future_transcription = processWhisper(audio_data, "sample.m4a", env);
+
+                // timeout within 30 seconds
+                if (future_transcription.wait_for(std::chrono::seconds(30)) == std::future_status::ready) {
+                    std::string transcription = future_transcription.get();
+
+                    nlohmann::json response_json = {
+                        {"title", meeting_title},
+                        {"datetime", meeting_datetime},
+                        {"transcription", transcription}};
+
+                    return crow::response(200, response_json.dump());
+                } else {
+                    std::cerr << "Timeout: whipser API took too long to respond" << std::endl;
+                    return crow::response(504, "Timeout");
+                }
+
+            } catch (const std::exception &e) {
+                std::stringstream ss;
+                ss << "Error: " << e.what() << "\n"
+                   << "Stack trace:\n"
+                   << boost::stacktrace::stacktrace();
+                std::cerr << ss.str() << std::endl;
+                return crow::response(500, "Internal Server Error");
+            }
+        });
+
+    // set routing for all paths
     app.route_dynamic("/")([&allowed_ips](const crow::request &req) {
-        std::string client_ip = req.remote_ip_address;
-        crow::response res;
-
-        if (!is_ip_allowed(client_ip, allowed_ips)) {
-            res.code = 403;
-            res.body = "Forbidden";
-            return res;
-        }
-
-        res.code = 200;
-        res.body = "Access granted!";
-        return res;
+        return handle_root(req, allowed_ips);
     });
 
     // set routing
     route(app, allowed_ips);
 
     // launch server
-    int port = config["port"].get<int>();
-    app.port(port).multithreaded().run();
+    // app.loglevel(crow::LogLevel::Debug);
+    app.port(port_number).multithreaded().run();
 
     return 0;
 }
