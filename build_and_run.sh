@@ -14,7 +14,7 @@ echo "INCLUDE_PATH: $INCLUDE_PATH"
 PROJECT_ROOT="$(pwd)"
 
 # clean old build
-if [ "$1" == "clean" ]; then
+if [[ "$@" == *clean* ]]; then
   echo "Cleaning old build..."
   rm -rf build
 fi
@@ -38,11 +38,19 @@ make -j$(nproc)
 # set the path to the executable
 EXECUTABLE="$PROJECT_ROOT/build/TG_cpp"
 
-# run the executable if it exists
+# run Valgrind or GDB, or the executable directly
 if [ -f "$EXECUTABLE" ]; then
-  echo "Running the executable..."
   cd ..
-  exec "$EXECUTABLE"
+  if [[ "$@" == *valgrind* ]]; then
+    echo "Running valgrind..."
+    valgrind --leak-check=full --show-leak-kinds=all "$EXECUTABLE"
+  elif [[ "$@" = *gdb* ]]; then
+    echo "Running GDB..."
+    gdb "$EXECUTABLE"
+  else
+    echo "Running the executable..."
+    exec "$EXECUTABLE"
+  fi
 else
   echo "Executable not found! Expected at: $EXECUTABLE"
   exit 1

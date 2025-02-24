@@ -54,6 +54,9 @@ message(STATUS "VCPKG_PATH: ${VCPKG_PATH}")
 # 使用するC++の標準を設定
 set(CMAKE_CXX_STANDARD 17)
 
+# デバッグビルド設定
+set(CMAKE_BUILD_TYPE Debug)
+
 # 実行ファイルを build ディレクトリに出力
 set(CMAKE_BINARY_DIR "${CMAKE_SOURCE_DIR}/build")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -67,6 +70,7 @@ endif()
 add_executable(
     TG_cpp
     src/main.cpp
+    src/network/curl_request.cpp
     src/routes/route.cpp
     src/utils/utils.cpp
     src/whisper/whisper_handler.cpp
@@ -90,3 +94,12 @@ message(STATUS "LINK_LIBRARIES: ${LINK_LIBRARIES}")
 
 # コンパイルオプションを追加
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic -Wno-type-limits")
+
+# コンパイラバージョンを表示
+message(STATUS "C++ Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+
+# Valgrindを実行するカスタムターゲット
+add_custom_target(valgrind
+    COMMAND valgrind --leak-check=full ./TG_cpp
+    DEPENDS TG_cpp
+    )

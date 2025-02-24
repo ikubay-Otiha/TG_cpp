@@ -98,3 +98,54 @@ json load_config_file(const std::string &file_path) {
 
     return config;
 }
+
+// multipart/form-dataのパラメータを解析する関数
+std::string extra_value(const std::string &body, const std::string &boundary, const std::string &field_name) {
+    std::string value;
+
+    // フィールドの開始位置を検索
+    std::string field_start_str = "Content-Disposition: form-data; name=\"" + field_name + "\"";
+    size_t field_start = body.find(field_start_str);
+    if (field_start == std::string::npos) {
+        return ""; // フィールドが見つからない場合、空文字を返す
+    }
+
+    // データの開始位置を検索
+    size_t data_start = body.find("\r\n\r\n", field_start) + 4;
+    if (data_start == std::string::npos) {
+        throw std::runtime_error("Invaild multiple format");
+    }
+
+    // 境界文字列を検索
+    size_t field_end = body.find("--" + boundary, data_start);
+    if (field_end == std::string::npos) {
+        throw std::runtime_error("Invalid multipart ending");
+    }
+
+    // 値を検出
+    value = body.substr(data_start, field_end - data_start - 2);
+
+    return value;
+}
+
+// multipart/form-dataの音声データを解析する関数
+std::vector<uint8_t> extra_audio_data(const std::string &body, const std::string &boundary) {
+    std::vector<uint8_t> audio_data;
+
+    // 境界文字列分割
+    size_t file_start = body.find("\r\n\r\n");
+    if (file_start == std::string::npos) {
+        throw std::runtime_error("Invaild multipart format");
+    }
+    file_start += 4; // `\r\n\r\n` の後からデータ開始
+
+    size_t file_end = body.find("--" + boundary, file_start);
+    if (file_end == std::string::npos) {
+        throw std::runtime_error("Invalid multipart ending");
+    }
+
+    // ファイルデータをバイナリとして取得
+    audio_data.assign(body.begin() + file_start, body.begin() + file_end - 2); // `\r\n` を除外
+
+    return audio_data;
+}
