@@ -2,9 +2,12 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "crow.h"
 
 bool is_ip_allowed(const std::string &ip,
                    const std::vector<std::string> &allowed_ips);
+
+std::string get_client_ip(const crow::request& request);
 
 std::vector<std::string> load_allowed_ips();
 

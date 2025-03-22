@@ -33,11 +33,13 @@ int main() {
     CROW_ROUTE(app, "/transcription")
         .methods("POST"_method)([&env, &allowed_ips](const crow::request &req) {
             // check if the IP is allowed
-            if (!is_ip_allowed(req.remote_ip_address, allowed_ips)) {
+            auto client_ip = get_client_ip(req);
+            if (!is_ip_allowed(client_ip, allowed_ips)) {
                 return crow::response(403, "Forbidden");
             }
 
             try {
+                std::cout << "start handle transcription process" << std::endl;
                 // headerのContent-typeを確認
                 std::string content_type = req.get_header_value("Content-Type");
                 if (content_type.find("multipart/form-data") == std::string::npos) {
@@ -75,6 +77,7 @@ int main() {
                 std::future<std::string> future_transcription = processWhisper(audio_data, "sample.m4a", env);
 
                 // timeout within 30 seconds
+                std::cout << "request OpenAI Whisper" << std::endl;
                 if (future_transcription.wait_for(std::chrono::seconds(30)) == std::future_status::ready) {
                     std::string transcription = future_transcription.get();
 
@@ -83,6 +86,8 @@ int main() {
                         {"datetime", meeting_datetime},
                         {"transcription", transcription}};
 
+                    std::cout << "response" << std::endl;
+                    std::cout << response_json.dump() << std::endl;
                     return crow::response(200, response_json.dump());
                 } else {
                     std::cerr << "Timeout: whipser API took too long to respond" << std::endl;

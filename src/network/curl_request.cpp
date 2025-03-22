@@ -1,6 +1,8 @@
 #include "curl_request.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
+#include <cctype> 
 
 CurlRequest::CurlRequest(const std::string &url, const std::string &apiKey)
     : curl(curl_easy_init()), mime(nullptr), headers(nullptr) {
@@ -43,16 +45,46 @@ void CurlRequest::addFilePart(
     if (fileData.empty()) {
         throw std::runtime_error("File data is empty. Cannot send empty file.");
     }
-
+    
+    std::cout << "Adding file part: " << fieldName << ", filename: " << fileName
+              << ", size: " << fileData.size() << " bytes" << std::endl;
+    
+    // ファイル拡張子からMIMEタイプを決定
+    std::string mimeType = "application/octet-stream";  // デフォルト
+    
+    size_t dotPos = fileName.find_last_of('.');
+    if (dotPos != std::string::npos) {
+        std::string ext = fileName.substr(dotPos);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        
+        if (ext == ".mp3") mimeType = "audio/mpeg";
+        else if (ext == ".m4a") mimeType = "audio/mp4";
+        else if (ext == ".wav") mimeType = "audio/wav";
+        else if (ext == ".flac") mimeType = "audio/flac";
+        else if (ext == ".ogg" || ext == ".oga") mimeType = "audio/ogg";
+        else if (ext == ".webm") mimeType = "audio/webm";
+        else if (ext == ".mp4") mimeType = "audio/mp4";
+        else if (ext == ".mpeg" || ext == ".mpga") mimeType = "audio/mpeg";
+    }
+    
+    std::cout << "Using MIME type: " << mimeType << " for file: " << fileName << std::endl;
+    
+    // ファイルヘッダーの最初の数バイトをデバッグ表示
+    if (fileData.size() >= 16) {
+        std::cout << "First 16 bytes: ";
+        for (size_t i = 0; i < 16; ++i) {
+            printf("%02x ", fileData[i]);
+        }
+        std::cout << std::endl;
+    }
+    
     curl_mimepart *part = curl_mime_addpart(mime);
     curl_mime_name(part, fieldName.c_str());
     curl_mime_data(part, reinterpret_cast<const char *>(fileData.data()), fileData.size());
-
-    // ファイル名をセット
     curl_mime_filename(part, fileName.c_str());
-
-    // MIMEタイプをセット
-    curl_mime_type(part, "audio/m4a");
+    curl_mime_type(part, mimeType.c_str());
+    
+    std::cout << "File part added successfully" << std::endl;
 }
 
 void CurlRequest::addTextPart(

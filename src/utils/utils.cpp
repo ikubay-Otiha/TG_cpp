@@ -45,6 +45,33 @@ std::vector<std::string> load_allowed_ips() {
     return allowed_ips;
 }
 
+// リクエストヘッダーからクライアントIPを取得する
+std::string get_client_ip(const crow::request& request) {
+    // X-Forwarded-For ヘッダーをチェック
+    auto forwardedFor = request.get_header_value("X-Forwarded-For");
+    std::cout << "forwardedFor" << std::endl;
+    std::cout << forwardedFor << std::endl;
+    if (!forwardedFor.empty()) {
+        // カンマ区切りの場合は最初のIPを使用
+        size_t commaPos = forwardedFor.find(',');
+        if (commaPos != std::string::npos) {
+            return forwardedFor.substr(0, commaPos);
+        }
+        return forwardedFor;
+    }
+    
+    // X-Real-IP ヘッダーをチェック
+    auto realIP = request.get_header_value("X-Real-IP");
+    std::cout << "realIP" << std::endl;
+    std::cout << realIP << std::endl;
+    if (!realIP.empty()) {
+        return realIP;
+    }
+    
+    // ヘッダーがない場合は直接のクライアントIPを使用
+    return request.remote_ip_address;
+}
+
 // .envファイルからAPIキーとURLを読み込む
 std::unordered_map<std::string, std::string> load_env() {
     std::unordered_map<std::string, std::string> env;
@@ -129,23 +156,102 @@ std::string extra_value(const std::string &body, const std::string &boundary, co
 }
 
 // multipart/form-dataの音声データを解析する関数
+// multipart/form-dataの音声データを解析する関数（大幅改善版）
 std::vector<uint8_t> extra_audio_data(const std::string &body, const std::string &boundary) {
     std::vector<uint8_t> audio_data;
 
-    // 境界文字列分割
-    size_t file_start = body.find("\r\n\r\n");
-    if (file_start == std::string::npos) {
-        throw std::runtime_error("Invaild multipart format");
+    // --boundaryで始まる各パートを探す
+    std::string boundary_str = "--" + boundary;
+    size_t pos = 0;
+    std::string name_pattern = "name=\"audio\"";
+    std::string filename_pattern = "filename=\"";
+    bool found_audio_part = false;
+    std::string detected_filename;
+    std::string content_type;
+
+    while ((pos = body.find(boundary_str, pos)) != std::string::npos) {
+        // このパートの開始位置（境界文字列の後）
+        size_t part_start = pos + boundary_str.length();
+        
+        // 次の境界文字列を探す
+        size_t next_boundary = body.find(boundary_str, part_start);
+        if (next_boundary == std::string::npos) {
+            break;  // これ以上パートがない
+        }
+        
+        // このパートのヘッダー部分を取得
+        size_t header_end = body.find("\r\n\r\n", part_start);
+        if (header_end == std::string::npos || header_end > next_boundary) {
+            pos = next_boundary;
+            continue;  // ヘッダーがない、または次の境界を超えている
+        }
+        
+        // このパートのヘッダー
+        std::string header = body.substr(part_start, header_end - part_start);
+        
+        // 'name="audio"'が含まれているか確認
+        if (header.find(name_pattern) != std::string::npos) {
+            found_audio_part = true;
+            
+            // ファイル名を抽出
+            size_t filename_pos = header.find(filename_pattern);
+            if (filename_pos != std::string::npos) {
+                filename_pos += filename_pattern.length();
+                size_t filename_end = header.find("\"", filename_pos);
+                if (filename_end != std::string::npos) {
+                    detected_filename = header.substr(filename_pos, filename_end - filename_pos);
+                    std::cout << "Found filename in request: " << detected_filename << std::endl;
+                }
+            }
+            
+            // Content-Typeを抽出
+            std::string content_type_pattern = "Content-Type: ";
+            size_t content_type_pos = header.find(content_type_pattern);
+            if (content_type_pos != std::string::npos) {
+                content_type_pos += content_type_pattern.length();
+                size_t content_type_end = header.find("\r\n", content_type_pos);
+                if (content_type_end != std::string::npos) {
+                    content_type = header.substr(content_type_pos, content_type_end - content_type_pos);
+                    std::cout << "Content-Type: " << content_type << std::endl;
+                }
+            }
+            
+            // データ部分を抽出（ヘッダー終了後からパート終了まで）
+            size_t data_start = header_end + 4;  // \r\n\r\n の後
+            size_t data_end = next_boundary - 2;  // 次の境界の2バイト前（\r\n を除く）
+            
+            if (data_start < data_end && data_start < body.size() && data_end <= body.size()) {
+                audio_data.assign(body.begin() + data_start, body.begin() + data_end);
+                std::cout << "Extracted audio data: " << audio_data.size() << " bytes" << std::endl;
+                
+                // 最初の16バイトをデバッグ出力
+                if (!audio_data.empty()) {
+                    std::cout << "First 16 bytes: ";
+                    for (size_t i = 0; i < std::min(audio_data.size(), size_t(16)); ++i) {
+                        printf("%02x ", audio_data[i]);
+                    }
+                    std::cout << std::endl;
+                }
+                
+                break;  // audioパートを見つけたので終了
+            } else {
+                std::cerr << "Invalid data range: start=" << data_start << ", end=" << data_end 
+                          << ", body size=" << body.size() << std::endl;
+            }
+        }
+        
+        // 次のパートへ
+        pos = next_boundary;
     }
-    file_start += 4; // `\r\n\r\n` の後からデータ開始
-
-    size_t file_end = body.find("--" + boundary, file_start);
-    if (file_end == std::string::npos) {
-        throw std::runtime_error("Invalid multipart ending");
+    
+    if (!found_audio_part) {
+        std::cerr << "Audio part not found in request body" << std::endl;
+    } else if (audio_data.empty()) {
+        std::cerr << "Found audio part, but data is empty" << std::endl;
+    } else if (audio_data.size() < 1000) {
+        std::cerr << "Warning: Audio data is suspiciously small (" 
+                  << audio_data.size() << " bytes)" << std::endl;
     }
-
-    // ファイルデータをバイナリとして取得
-    audio_data.assign(body.begin() + file_start, body.begin() + file_end - 2); // `\r\n` を除外
-
+    
     return audio_data;
 }
