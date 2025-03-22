@@ -1,0 +1,20 @@
+# ビルド関連
+build/
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.lib
+*.exe
+
+# エディタ関連
+.vscode/
+.idea/
+*.swp
+*~
+
+# その他
+.git/
+.gitignore
+README.md
